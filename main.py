@@ -52,7 +52,7 @@ def read_table(filename: str) -> pd.DataFrame:
     )
     if not df_raw:
         for delta_y in range(
-            DELTA_Y_STEP, MAX_VALUE_DELTA_Y + DELTA_Y_STEP, DELTA_Y_STEP
+                DELTA_Y_STEP, MAX_VALUE_DELTA_Y + DELTA_Y_STEP, DELTA_Y_STEP
         ):
             _create_new_template(delta_y)
             df_raw = read_pdf_with_template(
@@ -116,22 +116,11 @@ def process_df(df_raw: pd.DataFrame) -> pd.DataFrame:
         columns={
             "Preis": "EinzelPreis",
             "Aktion": "AktionPreis",
-            "Total": "TotalPreis",
+            "Total": "TotalerPreisNachRabatt",
         }
     )
-    df["Rabatt"] = (df["EinzelPreis"] - df["AktionPreis"]) * df["Menge"]
-    df["Assigned_to"] = None
-    df = df[
-        [
-            "Artikel",
-            "Menge",
-            "EinzelPreis",
-            "AktionPreis",
-            "TotalPreis",
-            "Rabatt",
-            "Assigned_to",
-        ]
-    ]
+    df["TotalerRabatt"] = (df["EinzelPreis"] - df["AktionPreis"]) * df["Menge"]
+    df = df[["Artikel", "TotalerPreisNachRabatt"]]
 
     return df
 
