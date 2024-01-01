@@ -11,6 +11,7 @@ from globals import (
     MAX_VALUE_DELTA_Y,
     NEW_TEMPLATE_FILEPATH,
     FULL_PAGE_TEMPLATE_FILEPATH,
+    TABLE_COLUMNS,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,6 @@ LOGGING_DOCUMENT_SEPARATOR = (
 
 
 def _create_new_template(delta_y: int) -> None:
-    logger.debug(f"Creating new template with delta_y={delta_y}")
     with open(FULL_PAGE_TEMPLATE_FILEPATH) as f:
         full_page_template = json.load(f)
     new_template = full_page_template
@@ -46,19 +46,8 @@ def read_table(filename: str) -> pd.DataFrame:
         input_path=f"pdfs_to_process/{filename}",
         pages=1,
         multiple_tables=False,
+        pandas_options={"header": None},
         stream=True,
-        pandas_options=dict(
-            header=None,
-            names=[
-                "Artikel",
-                "Menge",
-                "Preis",
-                "Aktion",
-                "Total",
-                "Zusatz",
-                "Letter",
-            ],
-        ),
         silent=True,
     )
     if not df_raw:
@@ -70,6 +59,7 @@ def read_table(filename: str) -> pd.DataFrame:
                 input_path=f"pdfs_to_process/{filename}",
                 template_path=NEW_TEMPLATE_FILEPATH,
                 pages=1,
+                pandas_options={"header": None},
                 stream=True,
                 silent=True,
             )
@@ -80,6 +70,9 @@ def read_table(filename: str) -> pd.DataFrame:
                 if "Total CHF" in df_tmp.values:  # try a new template
                     continue
                 else:  # template worked
+                    logger.debug(
+                        f"Successful read using template with delta_y={delta_y}"
+                    )
                     break
     if not df_raw:
         logger.info(f"Could not read any tables from file {filename}")
@@ -87,6 +80,22 @@ def read_table(filename: str) -> pd.DataFrame:
     else:
         logger.info(f"Successfully read table from file {filename}!")
         return df_raw[0]
+
+
+def format_df(df: pd.DataFrame) -> pd.DataFrame:
+    # Select subset of columns
+    df = df.iloc[:, 0:5]
+
+    # Check if header was processed as row
+    row0_values = list(df.iloc[0, :])
+    if any(val in TABLE_COLUMNS.keys() for val in row0_values):
+        df = df.drop(index=0)
+    df.columns = TABLE_COLUMNS.keys()
+    for col, coltype in TABLE_COLUMNS.items():
+        df[col] = df[col].astype(coltype)
+
+    logger.debug(df.head())
+    return df
 
 
 def process_df(df_raw: pd.DataFrame) -> pd.DataFrame:
@@ -147,10 +156,11 @@ def main():
             logger.error(e)
             logger.info(LOGGING_DOCUMENT_SEPARATOR)
             continue
-
-        df_processed = process_df(df)
+        df_formatted = format_df(df)
+        df_processed = process_df(df_formatted)
         save_df_as_excel(df_processed, filename_no_extension=filename.split(".")[0])
         logger.info(LOGGING_DOCUMENT_SEPARATOR)
+        logger.info("")
 
 
 if __name__ == "__main__":
