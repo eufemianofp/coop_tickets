@@ -100,16 +100,39 @@ def format_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def process_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     logger.debug("Processing articles that have been removed partially or entirely...")
-    df_grouped = df_raw.groupby(by="Artikel", as_index=False, sort=False).sum(
-        numeric_only=True
+    removed_articles = df_raw.loc[df_raw["Menge"] < 0, "Artikel"].unique()
+
+    df_removed = df_raw[df_raw["Artikel"].isin(removed_articles)].copy()
+    df_not_removed = df_raw[~df_raw["Artikel"].isin(removed_articles)].copy()
+
+    df_removed_grouped = (
+        df_removed[["Artikel", "Menge"]]
+        .groupby(by="Artikel", as_index=False, sort=False)
+        .sum(numeric_only=True)
     )
-    df_grouped = df_grouped[df_grouped["Menge"] > 0.0]
-    df_grouped = df_grouped.drop(columns=["Preis", "Aktion"])
-    df = df_grouped.merge(
+    df_removed_not_deleted = df_removed_grouped[df_removed_grouped["Menge"] > 0].copy()
+    df_removed_not_deleted_grams = df_removed_not_deleted[df_removed_not_deleted["Menge"] % 1 != 0].copy()
+    df_removed_not_deleted_units = df_removed_not_deleted[df_removed_not_deleted["Menge"] % 1 == 0].copy()
+
+    df_removed_not_deleted_units = df_removed_not_deleted_units.merge(
         df_raw[["Artikel", "Preis", "Aktion"]].drop_duplicates(),
         on="Artikel",
         how="left",
     )
+    df_removed_not_deleted_units["Total"] = df_removed_not_deleted_units["Menge"] * df_removed_not_deleted_units["Aktion"].combine_first(df_removed_not_deleted_units["Preis"])
+
+    df_removed_not_deleted_grams = df_removed_not_deleted_grams.merge(
+        df_raw[["Artikel", "Menge", "Preis", "Aktion"]].drop_duplicates(),
+        on=["Artikel", "Menge"],
+        how="left",
+    )
+    df_removed_not_deleted_grams["Total"] = df_removed_not_deleted_grams["Aktion"].combine_first(df_removed_not_deleted_grams["Preis"])
+
+    df = pd.concat([
+        df_not_removed,
+        df_removed_not_deleted_units,
+        df_removed_not_deleted_grams,
+    ])
 
     logger.debug("Renaming and reordering columns...")
     df = df.rename(
@@ -119,8 +142,6 @@ def process_df(df_raw: pd.DataFrame) -> pd.DataFrame:
             "Total": "TotalerPreisNachRabatt",
         }
     )
-    df["TotalerRabatt"] = (df["EinzelPreis"] - df["AktionPreis"]) * df["Menge"]
-    df = df[["Artikel", "TotalerPreisNachRabatt"]]
 
     return df
 
